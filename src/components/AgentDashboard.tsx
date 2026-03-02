@@ -11,12 +11,13 @@ import {
   CheckCircle,
   AlertCircle,
   Upload,
+  CloudUpload,
 } from 'lucide-react'
 import type { AgentConfig } from '../types/agent'
 import { loadAgentConfig, saveAgentConfig } from '../utils/storage'
-import { sendChatMessage, applyFlowiseConfig } from '../api/flowiseClient'
+import { sendChatMessage, updateChatflowConfig } from '../api/flowiseClient'
 
-type ChatMessage = {    
+type ChatMessage = {
   id: number
   role: 'user' | 'assistant'
   content: string
@@ -61,7 +62,7 @@ export function AgentDashboard() {
   const [flowiseApiKey, setFlowiseApiKey] = useState('')
 
   const [isSaving, setIsSaving] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
+  const [isUpdatingFlowise, setIsUpdatingFlowise] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
 
   // Chat state
@@ -112,17 +113,16 @@ export function AgentDashboard() {
     }
     setNotifications((prev) => [...prev, notification])
     
-    // Auto-remove after 3 seconds
+    // Auto-remove after 4 seconds
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== notification.id))
-    }, 3000)
+    }, 4000)
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     
     try {
-      // Save to local storage
       await new Promise((resolve) => setTimeout(resolve, 300))
       saveAgentConfig(currentConfig)
       addNotification('success', 'Configuration saved locally!')
@@ -133,25 +133,25 @@ export function AgentDashboard() {
     }
   }
 
-  const handleSyncToFlowise = async () => {
-    setIsSyncing(true)
+  const handleUpdateFlowise = async () => {
+    setIsUpdatingFlowise(true)
     
     try {
-      // First save locally
+      // Save locally first
       saveAgentConfig(currentConfig)
       
-      // Then sync to Flowise
-      const result = await applyFlowiseConfig(currentConfig)
+      // Then update on Flowise server permanently
+      const result = await updateChatflowConfig(currentConfig)
       
       if (result.success) {
-        addNotification('success', 'Configuration synced to Flowise!')
+        addNotification('success', 'Configuration permanently updated on Flowise server!')
       } else {
         addNotification('error', result.message)
       }
     } catch (error) {
-      addNotification('error', 'Failed to sync configuration to Flowise.')
+      addNotification('error', 'Failed to update Flowise configuration.')
     } finally {
-      setIsSyncing(false)
+      setIsUpdatingFlowise(false)
     }
   }
 
@@ -258,7 +258,7 @@ export function AgentDashboard() {
           ))}
         </div>
   
-        {/* ================= CHAT SECTION (NOW ON TOP) ================= */}
+        {/* ================= CHAT SECTION ================= */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -334,13 +334,18 @@ export function AgentDashboard() {
           </form>
         </div>
   
-        {/* ================= CONFIGURATION SECTION (NOW BELOW) ================= */}
+        {/* ================= CONFIGURATION SECTION ================= */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-blue-600" />
-            <h2 className="text-xl font-semibold text-slate-900">
-              Agent Configuration
-            </h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-blue-600" />
+              <h2 className="text-xl font-semibold text-slate-900">
+                Agent Configuration
+              </h2>
+            </div>
+            <div className="text-xs text-slate-500 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+              💡 Chat uses local config with temporary overrides
+            </div>
           </div>
   
           {/* MODEL */}
@@ -393,11 +398,12 @@ export function AgentDashboard() {
             <textarea
               value={agentPrompt}
               onChange={(e) => setAgentPrompt(e.target.value)}
+              placeholder="Enter system instructions for the AI agent..."
               className="w-full h-24 px-4 py-3 border border-slate-300 rounded-lg resize-none"
             />
           </div>
   
-          {/* BODY SCHEMA PANEL (RESTORED) */}
+          {/* BODY SCHEMA PANEL */}
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">
               Default Body Schema
@@ -434,6 +440,7 @@ export function AgentDashboard() {
               type="url"
               value={flowiseBaseUrl}
               onChange={(e) => setFlowiseBaseUrl(e.target.value)}
+              placeholder="https://cloud.flowiseai.com"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg"
             />
           </div>
@@ -446,6 +453,7 @@ export function AgentDashboard() {
               type="text"
               value={flowiseChatflowId}
               onChange={(e) => setFlowiseChatflowId(e.target.value)}
+              placeholder="e8309376"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg"
             />
           </div>
@@ -483,22 +491,38 @@ export function AgentDashboard() {
 
               <button
                 type="button"
-                onClick={handleSyncToFlowise}
-                disabled={isSyncing}
-                className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={handleUpdateFlowise}
+                disabled={isUpdatingFlowise}
+                className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Permanently updates the chatflow configuration on Flowise server"
               >
-                {isSyncing ? (
+                {isUpdatingFlowise ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Syncing...
+                    Updating...
                   </>
                 ) : (
                   <>
-                    <Upload className="w-4 h-4" />
-                    Sync to Flowise
+                    <CloudUpload className="w-4 h-4" />
+                    Update Flowise
                   </>
                 )}
               </button>
+            </div>
+          </div>
+
+          {/* INFO BOX */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-900">
+                <p className="font-medium mb-1">Configuration Modes:</p>
+                <ul className="space-y-1 list-disc list-inside text-blue-800">
+                  <li><strong>Save Local:</strong> Saves to browser storage only</li>
+                  <li><strong>Update Flowise:</strong> Permanently updates the chatflow on Flowise server</li>
+                  <li><strong>Chat:</strong> Uses local config with temporary overrides per request</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
